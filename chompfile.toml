@@ -1,0 +1,30 @@
+version = 0.1
+
+extensions = ['chomp@0.1:npm']
+
+[server]
+port = 8080
+root = "."
+
+[[task]]
+name = 'format-check'
+deps = ['npm:install']
+run = 'prettier -c src/*.js'
+
+[[task]]
+name = 'format'
+deps = ['npm:install']
+run = 'prettier -w src/*.js'
+
+[[task]]
+name = 'test'
+serial = true
+deps = ['npm:install', 'src/wasm-module-shims.js', 'test/test.html']
+run = 'node test/server.mjs test'
+
+[[task]]
+name = 'test-watch'
+serial = true
+env = { WATCH_MODE = 'true' }
+deps = ['npm:install', 'src/wasm-module-shims.js', 'test/test.html']
+run = 'node test/server.mjs test'
