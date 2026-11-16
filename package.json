@@ -1,6 +1,6 @@
 {
   "name": "wasm-module-shims",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shims for the WebAssembly ESM integration JS API",
   "type": "module",
   "main": "src/wasm-module-shims.js",

@@ -13,18 +13,17 @@ const wasmCompileStreaming = hasWasm && WebAssembly.compileStreaming;
 const wasmModuleImports = hasWasm && wasmModule.imports;
 const wasmModuleExports = hasWasm && wasmModule.exports;
 
-// registered symbols, so that multiple copies of this module on a page share module brands and options
-const s = Symbol.for('wasm-module-shims:brand');
-const o = Symbol.for('wasm-module-shims:options');
-const brand = m => (m[s] ? m : Object.defineProperty(m, s, { value: 'WebAssembly.Module' }));
+const s = Symbol();
+const brand = m => Object.defineProperty(m, s, { value: 'WebAssembly.Module' });
 
 // Native builtins and string constants only apply to modules compiled with those compile options, so
-// the options are recorded on the module at compilation to gate the polyfill at instantiation.
+// the options are recorded for the module at compilation to gate the polyfill at instantiation.
 export const builtinOptions = opts => {
   let { builtins: b, importedStringConstants: c } = opts || {};
   if ((b = b && [...b].includes('js-string')) || c != null) return { b, c };
 };
-const compiled = (m, opts) => brand(opts && !m[o] ? Object.defineProperty(m, o, { value: opts }) : m);
+const options = new WeakMap();
+const compiled = (m, opts) => brand(opts ? (options.set(m, opts), m) : m);
 
 const trap = () => {
   throw new WebAssembly.RuntimeError();
@@ -131,7 +130,7 @@ export const jsStringCompileOptions = { builtins: ['js-string'], importedStringC
 
 // Module source compilation for the module loader, used in both shim and polyfill modes independently of any
 // global patching: applies the ESM integration compile options and the source phase brand, recording the
-// options on the module for imports reflection and instantiation.
+// options for the module for imports reflection and instantiation.
 export const compileStreaming = source =>
   wasmCompileStreaming(source, jsStringCompileOptions).then(m => compiled(m, builtinOptions(jsStringCompileOptions)));
 
@@ -197,7 +196,7 @@ export const applyWasmPolyfills = () => {
   // modules compiled with the builtins or string constants compile options reflect without those
   // compiled-in imports, matching native reflection
   Module.imports = function imports(module, ...args) {
-    const opts = module[o];
+    const opts = options.get(module);
     return wasmModuleImports(module, ...args).filter(
       ({ module: m, name }) =>
         !opts || (m !== opts.c && !(opts.b && m === jsStringBuiltins && jsStringImports.hasOwnProperty(name)))
@@ -214,7 +213,7 @@ export const applyWasmPolyfills = () => {
     return result;
   };
   WebAssembly.instantiate = function instantiate(source, imports, ...args) {
-    const opts = source instanceof wasmModule ? source[o] : builtinOptions(args[0]);
+    const opts = source instanceof wasmModule ? options.get(source) : builtinOptions(args[0]);
     return wasmInstantiate(source, withJsStringImports(imports, opts), ...args).then(instantiated(opts));
   };
   WebAssembly.instantiateStreaming = function instantiateStreaming(source, imports, ...args) {
@@ -223,7 +222,7 @@ export const applyWasmPolyfills = () => {
   };
   const Instance = (WebAssembly.Instance = function Instance(module, imports) {
     if (!new.target) throw new TypeError(`Constructor WebAssembly.Instance requires 'new'`);
-    return Reflect.construct(wasmInstance, [module, withJsStringImports(imports, module && module[o])], new.target);
+    return Reflect.construct(wasmInstance, [module, withJsStringImports(imports, options.get(module))], new.target);
   });
   Instance.prototype = wasmInstance.prototype;
   Object.defineProperty(wasmInstance.prototype, 'constructor', { value: Instance });
